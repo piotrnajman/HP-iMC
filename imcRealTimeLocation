@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+#
+# This script ask iMC RESTful Web Service. Return 
+# XML with realtime location of mac or ip address.
+#
+# Author Piotr Najman
+# Created Mar 21, 2021
+# Last modified Jun 27, 2021
+#
+# Usage: imcRealTiemeLocation -t 1 -m mac_address
+#        imcRealTiemeLocation -t 2 -i ip_address
+#
+
+set -e
+
+_username=user
+_password=passwd
+_imcURL=http://0.0.0.0:8080
+_method=GET
+
+while getopts t:m:i: flag
+do
+    case "${flag}" in
+        t) _type=${OPTARG};;
+        m) _mac=${OPTARG};;
+        i) _ip=${OPTARG};;
+    esac
+done
+
+if [[ ${_type} == 1 ]] ; then
+    _val=${_mac}
+elif [[ ${_type} == 2 ]] ; then
+    _val=${_ip}
+else
+    echo "Usage: imcRealTimeLocation -t 1 -m mac_address || imcRealTimeLocation -t 2 -i ip_address";
+    exit 0;
+fi
+
+_uri="/imcrs/res/access/realtimeLocate?type=${_type}&value=${_val}"
+_imcHeader=$(curl --silent -I ${_imcURL}/imcrs/|grep WWW-Authenticate)
+_realm=$(echo ${_imcHeader} | cut -d '"' -f 2)
+_qop=$(echo ${_imcHeader}| cut -d '"' -f 4)
+_nonce=$(echo ${_imcHeader} | cut -d '"' -f 6)
+_t1=${_username}:${_realm}:${_password}
+_HA1=$(echo -n "${_t1}"|md5sum|awk '{print $1}')
+_t2="${_method}:${_uri}"
+_HA2=$(echo -n "${_t2}"|md5sum|awk '{print $1}')
+_t3=${_HA1}:${_nonce}:00000001:72ae56dde9406045:${_qop}:${_HA2}
+_response=$(echo -n "${_t3}"|md5sum|awk '{print $1}')
+_xml=$(curl --silent --compressed --header "Authorization: Digest username=${_username}, realm=\"${_realm}\", nonce=\"${_nonce}\", response=\"${_response}\", uri=\"${_uri}\", qop=\"auth\", nc=\"00000001\", cnonce=\"72ae56dde9406045\"" --header "Accept: application/xml" -X GET "http://10.255.105.2:8080${_uri}")
+echo ${_xml}
+exit 0
+
